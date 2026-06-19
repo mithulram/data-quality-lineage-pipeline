@@ -54,10 +54,18 @@ Open `artifacts/quality_report.html` to view the report. The sample deliberately
 |---|---|
 | `order_id_required` | Rejects blank order IDs |
 | `order_id_unique` | Rejects a repeated order ID within the source batch |
+| `customer_id_required` | Rejects blank customer IDs |
+| `order_timestamp_required` | Rejects blank order timestamps |
+| `amount_eur_required` | Rejects blank monetary values |
+| `source_system_required` | Rejects blank source-system values |
 | `customer_reference_exists` | Rejects orders whose customer does not exist in `customers.csv` |
 | `amount_positive` | Rejects zero or negative order values |
-| `amount_decimal` | Rejects malformed monetary values |
-| `timestamp_iso8601` | Rejects malformed timestamps |
+| `amount_decimal` | Rejects malformed monetary values when the field is present |
+| `timestamp_iso8601` | Rejects malformed timestamps when the field is present |
+
+Blank required fields emit only the corresponding `{column}_required` rule. Format and reference checks run only when the field is present, so a blank amount does not also trigger `amount_decimal`, and a blank customer ID does not also trigger `customer_reference_exists`.
+
+The same rule catalogue appears in `run_summary.json` (`quality_rules`) and `lineage_manifest.json` (`transformations[0].rules`) for reproducibility.
 
 ## Lineage
 

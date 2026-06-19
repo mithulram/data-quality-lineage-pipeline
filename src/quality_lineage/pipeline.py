@@ -18,9 +18,13 @@ import duckdb
 
 PIPELINE_VERSION = "0.1.0"
 SCHEMA_VERSION = "1"
+FIELD_REQUIRED_RULES = tuple(
+    f"{column}_required" for column in ("customer_id", "order_timestamp", "amount_eur", "source_system")
+)
 QUALITY_RULES = (
     "order_id_required",
     "order_id_unique",
+    *FIELD_REQUIRED_RULES,
     "customer_reference_exists",
     "amount_positive",
     "amount_decimal",
@@ -124,13 +128,20 @@ def _read_csv(path: Path, required_columns: tuple[str, ...]) -> list[dict[str, s
     if not path.exists():
         raise ValueError(f"Required source file does not exist: {path}")
     with path.open(newline="", encoding="utf-8") as file:
-        reader = csv.DictReader(file)
+        reader = csv.DictReader(file, restkey="_extra")
         if reader.fieldnames is None:
             raise ValueError(f"Source file has no header: {path}")
         missing = [column for column in required_columns if column not in reader.fieldnames]
         if missing:
             raise ValueError(f"Source file {path.name} is missing required columns: {', '.join(missing)}")
-        rows = [dict(row) for row in reader]
+        rows: list[dict[str, str | None]] = []
+        for row_number, row in enumerate(reader, start=2):
+            extra = row.pop("_extra", None)
+            if extra:
+                raise ValueError(
+                    f"Source file {path.name} row {row_number} has unexpected extra columns."
+                )
+            rows.append(dict(row))
     if not rows and reader.fieldnames:
         return []
     return rows
@@ -154,10 +165,12 @@ def _validate_order(
     else:
         seen_order_ids.add(order_id)
 
+    missing_columns: set[str] = set()
     for column in REQUIRED_ORDER_COLUMNS:
         if column == "order_id":
             continue
         if not order.get(column, ""):
+            missing_columns.add(column)
             issues.append(
                 QualityIssue(
                     order_id,
@@ -167,20 +180,22 @@ def _validate_order(
                 )
             )
 
-    if customer_id not in customer_ids:
+    if customer_id and "customer_id" not in missing_columns and customer_id not in customer_ids:
         issues.append(
             QualityIssue(order_id, customer_id, "customer_reference_exists", "Customer ID is absent from customers.csv.")
         )
-    try:
-        amount = Decimal(order.get("amount_eur", ""))
-        if amount <= 0:
-            issues.append(QualityIssue(order_id, customer_id, "amount_positive", "Amount must be greater than zero."))
-    except (InvalidOperation, ValueError):
-        issues.append(QualityIssue(order_id, customer_id, "amount_decimal", "Amount is not a decimal number."))
-    try:
-        datetime.fromisoformat(order.get("order_timestamp", ""))
-    except ValueError:
-        issues.append(QualityIssue(order_id, customer_id, "timestamp_iso8601", "Timestamp is not ISO-8601."))
+    if "amount_eur" not in missing_columns:
+        try:
+            amount = Decimal(order.get("amount_eur", ""))
+            if amount <= 0:
+                issues.append(QualityIssue(order_id, customer_id, "amount_positive", "Amount must be greater than zero."))
+        except (InvalidOperation, ValueError):
+            issues.append(QualityIssue(order_id, customer_id, "amount_decimal", "Amount is not a decimal number."))
+    if "order_timestamp" not in missing_columns:
+        try:
+            datetime.fromisoformat(order.get("order_timestamp", ""))
+        except ValueError:
+            issues.append(QualityIssue(order_id, customer_id, "timestamp_iso8601", "Timestamp is not ISO-8601."))
     return issues
 
 

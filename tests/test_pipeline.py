@@ -1,7 +1,9 @@
+import io
 import json
 import shutil
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from decimal import Decimal
 from pathlib import Path
 
@@ -143,3 +145,101 @@ class PipelineTests(unittest.TestCase):
                 ]
             )
             self.assertEqual(result, 2)
+
+    def test_orders_csv_extra_field_raises_value_error_with_context(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            source = Path(temporary_directory) / "source"
+            source.mkdir()
+            shutil.copy(SAMPLE_SOURCE / "customers.csv", source / "customers.csv")
+            (source / "orders.csv").write_text(
+                "\n".join(
+                    [
+                        "order_id,customer_id,order_timestamp,amount_eur,source_system",
+                        "ORD-EXTRA,CUST-001,2026-01-01T10:00:00,10.00,web,unexpected",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, r"orders\.csv row 2 has unexpected extra columns"):
+                run_pipeline(source, Path(temporary_directory) / "output")
+
+    def test_customers_csv_extra_field_raises_value_error_with_context(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            source = Path(temporary_directory) / "source"
+            source.mkdir()
+            shutil.copy(SAMPLE_SOURCE / "orders.csv", source / "orders.csv")
+            (source / "customers.csv").write_text(
+                "\n".join(
+                    [
+                        "customer_id,customer_name,region",
+                        "CUST-001,Acme Corp,EU,unexpected",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, r"customers\.csv row 2 has unexpected extra columns"):
+                run_pipeline(source, Path(temporary_directory) / "output")
+
+    def test_cli_rejects_extra_field_source_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            source = Path(temporary_directory) / "source"
+            source.mkdir()
+            shutil.copy(SAMPLE_SOURCE / "customers.csv", source / "customers.csv")
+            (source / "orders.csv").write_text(
+                "\n".join(
+                    [
+                        "order_id,customer_id,order_timestamp,amount_eur,source_system",
+                        "ORD-EXTRA,CUST-001,2026-01-01T10:00:00,10.00,web,unexpected",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as raised:
+                    main(
+                        [
+                            "run",
+                            "--source",
+                            str(source),
+                            "--output",
+                            str(Path(temporary_directory) / "output"),
+                            "--max-error-rate",
+                            "1.0",
+                        ]
+                    )
+            self.assertEqual(raised.exception.code, 2)
+            message = stderr.getvalue()
+            self.assertIn("unexpected extra columns", message)
+            self.assertNotIn("Traceback", message)
+
+    def test_blank_required_fields_do_not_emit_misleading_secondary_rules(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            source = Path(temporary_directory) / "source"
+            source.mkdir()
+            shutil.copy(SAMPLE_SOURCE / "customers.csv", source / "customers.csv")
+            (source / "orders.csv").write_text(
+                "\n".join(
+                    [
+                        "order_id,customer_id,order_timestamp,amount_eur,source_system",
+                        ",,,,",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            output = Path(temporary_directory) / "output"
+            result = run_pipeline(source, output, run_timestamp=FIXED_RUN_TIMESTAMP)
+            self.assertEqual(result.quarantined_rows, 1)
+            rules = set(result.rule_counts)
+            self.assertIn("order_id_required", rules)
+            self.assertIn("customer_id_required", rules)
+            self.assertIn("order_timestamp_required", rules)
+            self.assertIn("amount_eur_required", rules)
+            self.assertIn("source_system_required", rules)
+            self.assertNotIn("amount_decimal", rules)
+            self.assertNotIn("timestamp_iso8601", rules)
+            self.assertNotIn("customer_reference_exists", rules)
