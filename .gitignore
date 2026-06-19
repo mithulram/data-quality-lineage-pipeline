@@ -6,3 +6,10 @@ __pycache__/
 build/
 dist/
 artifacts/
+
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
