@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "data-quality-lineage-pipeline"
+version = "0.1.0"
+description = "A DuckDB pipeline that validates raw order data and emits lineage-aware analytical outputs."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+authors = [{name = "Mithulram Gunasekaran"}]
+dependencies = ["duckdb>=1.5,<1.6"]
+
+[project.scripts]
+quality-lineage = "quality_lineage.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

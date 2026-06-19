@@ -1,0 +1,7 @@
+order_id,customer_id,order_timestamp,amount_eur,source_system
+ORD-100,CUST-001,2026-01-10T09:30:00,125.50,crm-eu
+ORD-101,CUST-999,2026-01-11T10:00:00,80.00,crm-eu
+ORD-102,CUST-002,2026-01-12T11:15:00,-40.00,crm-eu
+ORD-103,CUST-002,2026-01-13T12:45:00,210.00,crm-eu
+ORD-103,CUST-003,2026-01-13T13:45:00,195.00,crm-eu
+ORD-105,CUST-003,not-a-timestamp,60.00,crm-eu
